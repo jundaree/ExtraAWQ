@@ -1,7 +1,7 @@
 # ExtraAWQ
 ExtraAWQ : Improved AWQ(Activation-aware Weight Quantization) with extra scaling (2024 Fall graduation project)
 
-This work is based on [AWQ](https://github.com/mit-han-lab/llm-awq). 
+This work is based on MIT HAN Lab's [AWQ](https://github.com/mit-han-lab/llm-awq). 
 
 /awq/quantize/autoscale.py is the only revised file. The inserted code is in search_module_scale() under auto_scale_block().
 
