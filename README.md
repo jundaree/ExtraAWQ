@@ -1,5 +1,6 @@
-# ExtraAWQ
-ExtraAWQ : Improved AWQ(Activation-aware Weight Quantization) with extra scaling (2024 Fall graduation project)
+# Large Language Model Compression : Enhancing AWQ
+
+Improved AWQ(Activation-aware Weight Quantization) with extra scaling (2024 Fall graduation project)
 
 This work is based on MIT HAN Lab's [AWQ](https://github.com/mit-han-lab/llm-awq). 
 
