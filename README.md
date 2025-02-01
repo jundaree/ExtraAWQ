@@ -8,7 +8,7 @@ This work is based on MIT HAN Lab's [AWQ](https://github.com/mit-han-lab/llm-awq
 
 2024/12/19 : The code is uploaded.
 
-Since the original files were lost, the updated part in the code might have some errors.
+Since the original works has been lost, the updated part in the code might have some errors.
 
 ![alt text](https://github.com/jundaree/ExtraAWQ/blob/main/poster.jpg?raw=true)
 
