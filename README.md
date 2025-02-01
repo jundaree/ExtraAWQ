@@ -1,4 +1,4 @@
-# Large Language Model Compression : Enhancing AWQ
+# LLM Compression : Enhancing AWQ
 
 Improved AWQ(Activation-aware Weight Quantization) with extra scaling (2024 Fall graduation project)
 
