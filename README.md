@@ -7,20 +7,22 @@ This work is based on MIT HAN Lab's [AWQ](https://github.com/mit-han-lab/llm-awq
 ## Updates
 
 2024/12/19 : The code is uploaded.
+<br>
 2025/07/18 : Dockerfile is uploaded.
 
 ## Install
 
-1. Clone this repository
+1. Clone this repository.
 
 ```
 git clone https://github.com/jundaree/ExtraAWQ.git
 cd ExtraAWQ
 ```
 
-2. (Optional) Open Dockerfile, and you can select CUDA 11.8 or CUDA 12.1(default) by commenting out
+2. (Optional) Open Dockerfile, and you can select CUDA 11.8 or CUDA 12.1(default) by commenting out.
 <br>
-3. Create Docker image and container using the Dockerfile
+
+3. Create Docker image and container using the Dockerfile.
 
 ```
 docker build -t extraawq_i .
@@ -43,7 +45,7 @@ sh download_checkpoints.sh
 
 1. (Optional) You can comment out the second loop in *opt_example.sh*,*llama_example.sh*,*llama2_example.sh*, as the pseudo-quantized model after the first loop is enough to show our results.
 
-2. Run the shell file
+2. Run the shell file.
 
 ```
 sh opt_example.sh
