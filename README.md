@@ -37,7 +37,7 @@ xhost +local:
 ## Download model checkpoints
 
 ```
-cd scripts
+cd /workspace/ExtraAWQ/scripts
 sh download_checkpoints.sh
 ```
 
