@@ -205,6 +205,7 @@ def build_model_and_enc(model_path):
                 q_config=q_config,
                 n_samples=128,
                 seqlen=512,
+                save_path=args.dump_awq.rsplit(".",1)[0],
             )
             if args.dump_awq:
                 dirpath = os.path.dirname(args.dump_awq)

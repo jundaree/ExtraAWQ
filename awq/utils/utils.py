@@ -1,5 +1,8 @@
 import torch
 import accelerate
+import matplotlib.pyplot as plt
+import numpy as np
+from pathlib import Path
 
 
 def get_module_by_name_suffix(model, module_name: str):
@@ -49,3 +52,37 @@ def simple_dispatch_model(model, device_map):
     model.hf_device_map = device_map
 
     return model
+
+
+def save_extra_scales(scales_list, save_path=None): 
+    
+
+    # Create lists to store all values from s[2] and s[3]
+    all_s2 = []
+    all_s3 = []
+    
+    # Extract values from each tuple in scales_list
+    for s in scales_list:
+        if isinstance(s[2], torch.Tensor) and isinstance(s[3], torch.Tensor):
+            # Convert tensors to numpy arrays and flatten
+            s2_values = s[2].flatten().cpu().numpy()
+            s3_values = s[3].flatten().cpu().numpy()
+            
+            # Ensure both arrays have the same length
+            min_length = min(len(s2_values), len(s3_values))
+            all_s2.extend(s2_values[:min_length])
+            all_s3.extend(s3_values[:min_length])
+    
+    # Convert lists to numpy arrays
+    all_s2_array = np.array(all_s2)
+    all_s3_array = np.array(all_s3)
+    
+    # Save both arrays in a single pth file
+    Path(save_path).mkdir(exist_ok=True)
+    torch.save({
+        "org_scales": all_s3_array,
+        "scales": all_s2_array
+    }, Path(save_path)/"scales_data.pth")
+    
+
+    

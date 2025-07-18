@@ -82,8 +82,6 @@ def pseudo_quantize_tensor(
         scales = max_val / max_int
         zeros = 0
 
-    assert torch.isnan(scales).sum() == 0
-    assert torch.isnan(w).sum() == 0
 
     if inplace:
         (
@@ -93,7 +91,7 @@ def pseudo_quantize_tensor(
         w = (
             torch.clamp(torch.round(w / scales) + zeros, min_int, max_int) - zeros
         ) * scales
-    assert torch.isnan(w).sum() == 0
+    assert torch.isnan(w).sum() == 0, f"torch.isnsan(w).sum()={torch.isnan(w).sum()}"
 
     w = w.reshape(org_w_shape)
 

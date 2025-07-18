@@ -15,6 +15,8 @@ from transformers.models.qwen2.modeling_qwen2 import Qwen2ForCausalLM
 from .auto_scale import auto_scale_block, apply_scale
 from .auto_clip import auto_clip_block, apply_clip
 
+from ..utils.utils import save_extra_scales
+
 __all__ = ["run_awq"]
 
 
@@ -95,6 +97,7 @@ def run_awq(
     mse_range=True,
     # some configs for ablation study
     calib_data="pileval",
+    save_path=None,
 ):
     from ..utils.calib_data import get_calib_dataset
     from ..utils.module import append_str_prefix, get_op_name
@@ -153,6 +156,8 @@ def run_awq(
         "clip": [],
     }
 
+    scales_list_all_layers = []
+
     # solve layer by layer
     for i in tqdm.tqdm(range(len(layers)), desc="Running AWQ..."):
         layer = layers[i]
@@ -194,6 +199,7 @@ def run_awq(
                 q_config=q_config,
                 input_feat=input_feat,
             )
+            scales_list_all_layers.extend(scales_list)
             # apply_scale(layer, scales_list, input_feat_dict=input_feat)
             apply_scale(layers[i], scales_list, input_feat_dict=input_feat)
             # append prefix to make names global
@@ -228,6 +234,10 @@ def run_awq(
         # for line in torch.cuda.memory_summary().splitlines():
         #     if "Allocated" in line:
         #         print(line)
+
+
+    save_extra_scales(scales_list_all_layers, save_path)
+    
 
     return awq_results
 

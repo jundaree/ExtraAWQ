@@ -120,9 +120,12 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
         best_error = float("inf")
         best_ratio = -1
         best_scales = None
+        best_org_scales = None
 
         n_grid = 20
         history = []
+
+        
 
         org_sd = {k: v.cpu() for k, v in block.state_dict().items()}
         for ratio in range(n_grid):
@@ -133,20 +136,22 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
             # ExtraAWQ  2024/11
             ######################################################
             
-            weight=torch.zeros(0,scales.shape[0]).to(fc.weight.device)
+            org_scales = scales.clone()
+
+            weight=torch.zeros((0,scales.shape[0]), dtype=torch.float32).to(linears2scale[0].weight.device)
             for fc in linears2scale :
                 w=fc.weight.data.clone().to(fc.weight.device)
                 weight=torch.cat((weight,w),dim=0)
-            
             weight=weight*scales.view(1,-1)
             ci=weight.shape[1]
             weight=weight.view(-1,q_group_size)
-            weight_max=torch.amax(weight,dim=1,keepdims=True)
-            extra_scales=weight_max/weight
+            weight_max=torch.amax(torch.abs(weight),dim=1,keepdims=True)
+            extra_scales=weight_max/(torch.abs(weight)+1e-5)
             extra_scales=extra_scales.view(-1,ci)
             extra_scales=torch.amin(extra_scales,dim=0)
             extra_scales=extra_scales.view(-1)
             scales=scales*extra_scales
+            scales = scales.to(torch.float16)
 
             ######################################################
 
@@ -166,6 +171,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 best_error = loss
                 best_ratio = ratio
                 best_scales = scales
+                best_org_scales = org_scales
             block.load_state_dict(org_sd)
         if best_ratio == -1:
             print(history)
@@ -174,7 +180,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
         best_scales = best_scales.view(-1)
 
         assert torch.isnan(best_scales).sum() == 0, best_scales
-        return best_scales.detach()
+        return best_scales.detach(), best_org_scales.detach()
 
     def _auto_get_scale(prev_op, layers, inp, module2inspect=None, q_group_size=128, kwargs={}):
         # module2inspect: if given, we will check the output diff of this module instead of layers
@@ -182,13 +188,15 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
             assert len(layers) == 1
             module2inspect = layers[0]
 
-        scales = _search_module_scale(module2inspect, layers, inp, q_group_size, kwargs)
+        scales, org_scales = _search_module_scale(module2inspect, layers, inp, q_group_size, kwargs)
         scales = scales.detach().cpu()
+        org_scales = org_scales.detach().cpu()
         # prev_op_name, [layer_name], scale
         return (
             get_op_name(module, prev_op),
             tuple([get_op_name(module, m) for m in layers]),
             scales,
+            org_scales,
         )
 
     scales_list = []  # return the searched scales
@@ -205,7 +213,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 ],
                 inp=input_feat["self_attn.q_proj"],
                 module2inspect=module.self_attn,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
                 kwargs=module_kwargs,
             )
         )
@@ -215,7 +223,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.self_attn.v_proj,
                 layers=[module.self_attn.out_proj],
                 inp=input_feat["self_attn.out_proj"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
         # fc1
@@ -224,7 +232,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.final_layer_norm,
                 layers=[module.fc1],
                 inp=input_feat["fc1"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
         # fc2
@@ -233,7 +241,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.fc1,
                 layers=[module.fc2],
                 inp=input_feat["fc2"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
 
@@ -249,7 +257,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 ],
                 inp=input_feat["self_attn.q_proj"],
                 module2inspect=module.self_attn,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
                 kwargs=module_kwargs,
             )
         )
@@ -261,7 +269,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                     prev_op=module.self_attn.v_proj,
                     layers=[module.self_attn.o_proj],
                     inp=input_feat["self_attn.o_proj"],
-                    q_group_size=q_config.q_group_size,
+                    q_group_size=q_config['q_group_size'],
                 )
             )
         # fc1
@@ -271,7 +279,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 layers=[module.mlp.gate_proj, module.mlp.up_proj],
                 inp=input_feat["mlp.gate_proj"],
                 module2inspect=module.mlp,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
         # fc2
@@ -280,7 +288,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.mlp.up_proj,
                 layers=[module.mlp.down_proj],
                 inp=input_feat["mlp.down_proj"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
 
@@ -292,7 +300,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 layers=[module.self_attention.query_key_value],
                 inp=input_feat["self_attention.query_key_value"],
                 module2inspect=module,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
                 kwargs=module_kwargs,
             )
         )
@@ -312,7 +320,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 layers=[module.mlp.dense_h_to_4h],
                 inp=input_feat["mlp.dense_h_to_4h"],
                 module2inspect=module,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
                 kwargs=module_kwargs,
             )
         )
@@ -322,7 +330,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.mlp.gelu_impl,
                 layers=[module.mlp.dense_4h_to_h],
                 inp=input_feat["mlp.dense_4h_to_h"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
     elif "mpt" in str(module.__class__).lower():
@@ -333,7 +341,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 layers=[module.attn.Wqkv],
                 inp=input_feat["attn.Wqkv"],
                 module2inspect=module.attn,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
                 kwargs=module_kwargs,
             )
         )
@@ -344,7 +352,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.attn.Wqkv,
                 layers=[module.attn.out_proj],
                 inp=input_feat["attn.out_proj"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
         # fc1
@@ -354,7 +362,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 layers=[module.ffn.up_proj],
                 inp=input_feat["ffn.up_proj"],
                 module2inspect=module.ffn,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
         # fc2
@@ -363,7 +371,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.ffn.act,
                 layers=[module.ffn.down_proj],
                 inp=input_feat["ffn.down_proj"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
 
@@ -388,7 +396,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                     ],
                     inp=input_feat["self_attention.query_key_value"],
                     module2inspect=module,
-                    q_group_size=q_config.q_group_size,
+                    q_group_size=q_config['q_group_size'],
                     kwargs=module_kwargs,
                 )
             )
@@ -399,7 +407,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                     layers=[module.self_attention.query_key_value],
                     inp=input_feat["self_attention.query_key_value"],
                     module2inspect=module,
-                    q_group_size=q_config.q_group_size,
+                    q_group_size=q_config['q_group_size'],
                     kwargs=module_kwargs,
                 )
             )
@@ -409,7 +417,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                     layers=[module.mlp.dense_h_to_4h],
                     inp=input_feat["mlp.dense_h_to_4h"],
                     module2inspect=module,
-                    q_group_size=q_config.q_group_size,
+                    q_group_size=q_config['q_group_size'],
                     kwargs=module_kwargs,
                 )
             )
@@ -423,7 +431,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.mlp.act,
                 layers=[module.mlp.dense_4h_to_h],
                 inp=input_feat["mlp.dense_4h_to_h"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
     elif "bigcode" in str(module.__class__).lower():
@@ -433,7 +441,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 layers=[module.attn.c_attn],
                 inp=input_feat["attn.c_attn"],
                 module2inspect=module.attn,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
                 kwargs=module_kwargs,
             )
         )
@@ -444,7 +452,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 layers=[module.mlp.c_fc],
                 inp=input_feat["mlp.c_fc"],
                 module2inspect=module.mlp,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
         # fc2
@@ -453,7 +461,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.mlp.act,
                 layers=[module.mlp.c_proj],
                 inp=input_feat["mlp.c_proj"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
     elif "neox" in str(module.__class__).lower():
@@ -463,7 +471,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 layers=[module.attention.query_key_value],
                 inp=input_feat["attention.query_key_value"],
                 module2inspect=module.attention,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
                 kwargs=module_kwargs,
             )
         )
@@ -474,7 +482,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 layers=[module.mlp.dense_h_to_4h],
                 inp=input_feat["mlp.dense_h_to_4h"],
                 module2inspect=module.mlp,
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
         # fc2
@@ -483,7 +491,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
                 prev_op=module.mlp.act,
                 layers=[module.mlp.dense_4h_to_h],
                 inp=input_feat["mlp.dense_4h_to_h"],
-                q_group_size=q_config.q_group_size,
+                q_group_size=q_config['q_group_size'],
             )
         )
     else:
@@ -493,7 +501,7 @@ def auto_scale_block(module, module_kwargs, w_bit, q_config, input_feat):
 
 
 def apply_scale(module, scales_list, input_feat_dict=None):
-    for prev_op_name, layer_names, scales in scales_list:
+    for prev_op_name, layer_names, scales, _ in scales_list:
         prev_op = get_op_by_name(module, prev_op_name)
         layers = [get_op_by_name(module, name) for name in layer_names]
 

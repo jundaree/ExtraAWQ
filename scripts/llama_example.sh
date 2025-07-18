@@ -1,25 +1,37 @@
-MODEL=llama-7b
+MODELS=( "llama-7b" "llama-13b")
 
-# run AWQ search (optional; we provided the pre-computed results)
-python -m awq.entry --model_path /dataset/llama-hf/$MODEL \
-    --w_bit 4 --q_group_size 128 \
-    --run_awq --dump_awq awq_cache/$MODEL-w4-g128.pt
+for MODEL in "${MODELS[@]}"; do
+    echo "Processing model: $MODEL"
+    
+    # run AWQ search
+    python -m awq.entry --model_path ../dataset/$MODEL \
+        --w_bit 4 --q_group_size 128 \
+        --run_awq --dump_awq ../awq_cache/$MODEL-w4-g128.pt
+    
+    
+    echo "Completed processing for $MODEL"
+    echo "----------------------------------------"
+done
 
-# evaluate the AWQ quantize model (simulated pseudo quantization)
-python -m awq.entry --model_path /dataset/llama-hf/$MODEL \
-    --tasks wikitext \
-    --w_bit 4 --q_group_size 128 \
-    --load_awq awq_cache/$MODEL-w4-g128.pt \
-    --q_backend fake
+for MODEL in "${MODELS[@]}"; do
 
-# generate real quantized weights (w4)
-python -m awq.entry --model_path /dataset/llama-hf/$MODEL \
-    --w_bit 4 --q_group_size 128 \
-    --load_awq awq_cache/$MODEL-w4-g128.pt \
-    --q_backend real --dump_quant quant_cache/$MODEL-w4-g128-awq.pt
+    # evaluate the AWQ quantize model (simulated pseudo quantization)
+    python -m awq.entry --model_path ../dataset/$MODEL \
+        --tasks wikitext \
+        --w_bit 4 --q_group_size 128 \
+        --load_awq ../awq_cache/$MODEL-w4-g128.pt \
+        --q_backend fake
 
-# load and evaluate the real quantized model (smaller gpu memory usage)
-python -m awq.entry --model_path /dataset/llama-hf/$MODEL \
-    --tasks wikitext \
-    --w_bit 4 --q_group_size 128 \
-    --load_quant quant_cache/$MODEL-w4-g128-awq.pt
+    # generate real quantized weights (w4)
+    python -m awq.entry --model_path ../dataset/$MODEL \
+        --w_bit 4 --q_group_size 128 \
+        --load_awq ../awq_cache/$MODEL-w4-g128.pt \
+        --q_backend real --dump_quant ../quant_cache/$MODEL-w4-g128-awq.pt
+
+    # load and evaluate the real quantized model (smaller gpu memory usage)
+    python -m awq.entry --model_path ../dataset/$MODEL \
+        --tasks wikitext \
+        --w_bit 4 --q_group_size 128 \
+        --load_quant ../quant_cache/$MODEL-w4-g128-awq.pt
+
+done
